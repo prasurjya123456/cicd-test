@@ -1,0 +1,14 @@
+name: CI_Test
+on: 
+  push:
+    branches: [ "main" ] # This tells GitHub: "Run this every time I push to main"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get my code
+        uses: actions/checkout@v4 # Downloads your code so the robot can see it
+
+      - name: Simple Test
+        run: echo "The trigger is working, and the pipeline has started!"
