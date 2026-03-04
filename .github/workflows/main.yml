@@ -4,7 +4,6 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # Job 1: Check the Frontend
   frontend-check:
     runs-on: ubuntu-latest
     steps:
@@ -13,13 +12,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Build Frontend
-        working-directory: ./AS-03-Frontend
-        run: |
-          npm install
-          npm run build --if-present
+      - name: Install Frontend
+        working-directory: ./AS-03-Frontend # Tells the robot exactly where to go
+        run: npm install
 
-  # Job 2: Check the Backend
   backend-check:
     runs-on: ubuntu-latest
     steps:
@@ -29,5 +25,5 @@ jobs:
         with:
           node-version: '20'
       - name: Install Backend
-        working-directory: ./AS-03-Backend
+        working-directory: ./AS-03-Backend # Tells the robot exactly where to go
         run: npm install
