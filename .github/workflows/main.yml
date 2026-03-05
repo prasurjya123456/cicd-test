@@ -60,6 +60,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 20m
           script: |
+            set -e  # Ensures the script stops if any command fails (like npm run build)
             export PATH=$PATH:/home/${{ secrets.EC2_USERNAME }}/.nvm/versions/node/v20.x.x/bin
             cd ~/app
 
