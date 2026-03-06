@@ -36,7 +36,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-  deploy-cd:
+  deploy:
     needs: [frontend-ci, backend-ci] 
     runs-on: ubuntu-latest
     timeout-minutes: 10 # Hard stop for the whole job
