@@ -2,14 +2,14 @@ version: '3.8'
 
 services:
   frontend:
-    build: ./AS-03-Frontend
+    image: ghcr.io/prasurjya123456/as-03-frontend:latest # Pulls from GitHub Registry
     container_name: as03-frontend
     ports:
-      - "3000:80" 
+      - "80:80" # Maps AWS Port 80 to Docker Port 80
     restart: unless-stopped
 
   backend:
-    build: ./AS-03-Backend
+    image: ghcr.io/prasurjya123456/as-03-backend:latest # Pulls from GitHub Registry
     container_name: as03-backend
     environment:
       - DB_HOST=${RDS_ENDPOINT}

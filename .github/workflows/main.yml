@@ -1,4 +1,4 @@
-name: Full_Stack_Docker_CI_CD
+name: Full_Stack_Docker_Auto_Deploy
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # Required to push images to GHCR
 
     steps:
       - name: Checkout code
@@ -23,7 +23,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }} # Automatically provided by GitHub
 
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
@@ -40,7 +40,7 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/as-03-frontend:latest
 
   deploy:
-    needs: build-and-push
+    needs: build-and-push # Ensures deployment only happens if builds pass
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to EC2 via SSH
@@ -50,15 +50,17 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Navigate to your project folder
+            cd ~/cicd-test || git clone https://github.com/prasurjya123456/cicd-test.git ~/cicd-test
             cd ~/cicd-test
             git pull origin main
-            
-            # Login to GHCR on the EC2 instance
+
+            # Login to GHCR on the EC2 instance to pull private images
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # Pull new images and restart services
+
+            # Pull the latest images and restart the containers
             docker compose pull
             docker compose up -d --remove-orphans
-            
-            # Cleanup old unused images to save space
+
+            # Optional: Clean up old, dangling images to save disk space
             docker image prune -f
