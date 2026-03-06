@@ -88,10 +88,14 @@ jobs:
             set -e
             cd ~/app/deploy
 
-            # Load Node environment if you are using NVM (adjust path if needed)
-            export PATH=$PATH:/home/${{ secrets.EC2_USERNAME }}/.nvm/versions/node/v20.x.x/bin || true
+            # 1. Properly load NVM in this non-interactive shell
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-            # Install PM2 and serve globally if they aren't already
+            # 2. Verify node is loaded (helps with debugging logs)
+            node -v
+
+            # 3. Install PM2 and serve globally if they aren't already
             npm install -g pm2 serve --silent
 
             # --- Backend Deployment ---
