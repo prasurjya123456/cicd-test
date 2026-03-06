@@ -85,18 +85,16 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 10m
           script: |
-            set -e
+            set -ex  # The 'x' enables bash debugging to print every command
             cd ~/app/deploy
 
-            # 1. Properly load NVM in this non-interactive shell
+            # 1. Properly load NVM
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-
-            # 2. Verify node is loaded (helps with debugging logs)
             node -v
 
-            # 3. Install PM2 and serve globally if they aren't already
-            npm install -g pm2 serve --silent
+            # 2. Install PM2 and serve (removed --silent to see errors)
+            npm install -g pm2 serve
 
             # --- Backend Deployment ---
             cd backend
@@ -104,18 +102,15 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt --no-cache-dir
             
-            # Start or restart FastAPI via PM2
-            pm2 start "venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000" --name "as03-backend" || pm2 restart "as03-backend"
+            # Safer PM2 start/restart logic
+            pm2 describe as03-backend > /dev/null && pm2 restart as03-backend || pm2 start "venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000" --name "as03-backend"
             
             cd ..
 
             # --- Frontend Deployment ---
             cd frontend
             
-            # Start or restart React via PM2
-            pm2 start "serve -s dist -l 3000" --name "as03-frontend" || pm2 restart "as03-frontend"
+            pm2 describe as03-frontend > /dev/null && pm2 restart as03-frontend || pm2 start "serve -s dist -l 3000" --name "as03-frontend"
 
-            # Save the process list so they auto-restart if the EC2 instance reboots
             pm2 save
-            
             echo "Deployment successful!"
