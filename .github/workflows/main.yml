@@ -97,7 +97,9 @@ jobs:
             
             # Cleaner process kill
             pkill -f "uvicorn app:main:app" || true 
-            nohup venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
+            
+            # Added </dev/null to fully detach the process
+            nohup venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 </dev/null &
             
             cd ..
 
@@ -107,6 +109,8 @@ jobs:
             # Using 'serve' for production instead of 'npm run preview'
             # If serve isn't installed on the EC2, this will install it temporarily via npx
             pkill -f "serve -s dist" || true
-            nohup npx serve -s dist -l 3000 > frontend.log 2>&1 &
+            
+            # Added </dev/null to fully detach the process
+            nohup npx serve -s dist -l 3000 > frontend.log 2>&1 </dev/null &
 
             echo "Deployment successful!"
