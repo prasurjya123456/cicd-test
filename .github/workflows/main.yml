@@ -5,21 +5,16 @@ on:
     branches: ["main"]
 
 jobs:
-  # ==========================================
-  # PHASE 1: CONTINUOUS INTEGRATION (CI)
-  # ==========================================
   frontend-ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: 'npm'
           cache-dependency-path: './AS-03-Frontend/package-lock.json'
-
       - name: Install & Build Frontend
         working-directory: ./AS-03-Frontend
         run: |
@@ -30,26 +25,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
           cache: 'pip'
-
       - name: Test Backend Dependencies
         working-directory: ./AS-03-Backend
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-  # ==========================================
-  # PHASE 2: CONTINUOUS DEPLOYMENT (CD)
-  # ==========================================
   deploy-cd:
     needs: [frontend-ci, backend-ci] 
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Prevent indefinite hanging
+    timeout-minutes: 10 # Hard stop for the whole job
     steps:
       - name: SSH and Deploy
         uses: appleboy/ssh-action@v1.0.3
@@ -57,30 +47,29 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 20m
+          port: 22
+          timeout: 60s # If it can't connect in 60s, fail fast
           script: |
             set -ex
             APP_DIR="~/app"
             mkdir -p $APP_DIR
             cd $APP_DIR
             
-            # OPTIMIZATION: Use Git Pull instead of SCP for speed and reliability
+            # Setup Git Config to avoid prompts
+            git config --global --add safe.directory $APP_DIR
+
             if [ -d ".git" ]; then
               git pull origin main
             else
               git clone https://github.com/${{ github.repository }}.git .
             fi
             
-            # Create .env dynamically
             cat <<EOF > .env
             RDS_ENDPOINT=${{ secrets.RDS_ENDPOINT }}
             RDS_USER=${{ secrets.RDS_USER }}
             RDS_PASSWORD=${{ secrets.RDS_PASSWORD }}
             EOF
             
-            # Run Deployment
             sudo docker compose down --remove-orphans
             sudo docker compose up --build -d
-            
-            # Cleanup
             sudo docker image prune -f
