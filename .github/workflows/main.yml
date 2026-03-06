@@ -19,7 +19,6 @@ jobs:
 
       - name: Install and Build Frontend
         working-directory: ./AS-03-Frontend
-        # Using 'npm ci' is faster and more reliable in CI environments than 'npm install'
         run: |
           npm ci
           npm run build
@@ -89,28 +88,30 @@ jobs:
             set -e
             cd ~/app/deploy
 
+            # Load Node environment if you are using NVM (adjust path if needed)
+            export PATH=$PATH:/home/${{ secrets.EC2_USERNAME }}/.nvm/versions/node/v20.x.x/bin || true
+
+            # Install PM2 and serve globally if they aren't already
+            npm install -g pm2 serve --silent
+
             # --- Backend Deployment ---
             cd backend
             python3 -m venv venv || true
             source venv/bin/activate
             pip install -r requirements.txt --no-cache-dir
             
-            # Cleaner process kill
-            pkill -f "uvicorn app:main:app" || true 
-            
-            # Added </dev/null to fully detach the process
-            nohup venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 </dev/null &
+            # Start or restart FastAPI via PM2
+            pm2 start "venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000" --name "as03-backend" || pm2 restart "as03-backend"
             
             cd ..
 
             # --- Frontend Deployment ---
             cd frontend
             
-            # Using 'serve' for production instead of 'npm run preview'
-            # If serve isn't installed on the EC2, this will install it temporarily via npx
-            pkill -f "serve -s dist" || true
-            
-            # Added </dev/null to fully detach the process
-            nohup npx serve -s dist -l 3000 > frontend.log 2>&1 </dev/null &
+            # Start or restart React via PM2
+            pm2 start "serve -s dist -l 3000" --name "as03-frontend" || pm2 restart "as03-frontend"
 
+            # Save the process list so they auto-restart if the EC2 instance reboots
+            pm2 save
+            
             echo "Deployment successful!"
