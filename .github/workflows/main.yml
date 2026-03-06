@@ -20,12 +20,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: './AS-03-Frontend/package-lock.json'
 
-      - name: Test Frontend Build
+      - name: Install & Build Frontend
         working-directory: ./AS-03-Frontend
         run: |
           npm ci
           npm run build
-          # If you write tests later, add 'npm test' here!
 
   backend-ci:
     runs-on: ubuntu-latest
@@ -43,30 +42,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # If you write tests later, add 'pytest' here!
 
   # ==========================================
   # PHASE 2: CONTINUOUS DEPLOYMENT (CD)
   # ==========================================
   deploy-cd:
-    # The 'needs' keyword is the bridge between CI and CD. 
-    # This job will ONLY run if both CI jobs above succeed.
     needs: [frontend-ci, backend-ci] 
     runs-on: ubuntu-latest
+    timeout-minutes: 10 # Prevent indefinite hanging
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy Repository to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "."
-          target: "~/app"
-
-      - name: SSH and Start Docker Compose
+      - name: SSH and Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -75,26 +60,27 @@ jobs:
           command_timeout: 20m
           script: |
             set -ex
-            cd ~/app
+            APP_DIR="~/app"
+            mkdir -p $APP_DIR
+            cd $APP_DIR
             
-            # Create the .env file dynamically to inject AWS RDS credentials
+            # OPTIMIZATION: Use Git Pull instead of SCP for speed and reliability
+            if [ -d ".git" ]; then
+              git pull origin main
+            else
+              git clone https://github.com/${{ github.repository }}.git .
+            fi
+            
+            # Create .env dynamically
             cat <<EOF > .env
             RDS_ENDPOINT=${{ secrets.RDS_ENDPOINT }}
             RDS_USER=${{ secrets.RDS_USER }}
             RDS_PASSWORD=${{ secrets.RDS_PASSWORD }}
             EOF
             
-            # Install Docker & Docker Compose if missing
-            if ! command -v docker-compose &> /dev/null; then
-              sudo apt-get update
-              sudo apt-get install -y docker.io docker-compose-v2
-            fi
+            # Run Deployment
+            sudo docker compose down --remove-orphans
+            sudo docker compose up --build -d
             
-            # Spin down old containers, rebuild images, and start
-            sudo docker compose down
-            sudo docker compose --env-file .env up --build -d
-            
-            # Clean up old unused images
+            # Cleanup
             sudo docker image prune -f
-            
-            echo "Docker Deployment successful!"
