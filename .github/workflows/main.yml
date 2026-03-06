@@ -48,7 +48,7 @@ jobs:
   # ==========================================
   # PHASE 2: CONTINUOUS DEPLOYMENT (CD)
   # ==========================================
-  deploy:
+  deploy-cd:
     # The 'needs' keyword is the bridge between CI and CD. 
     # This job will ONLY run if both CI jobs above succeed.
     needs: [frontend-ci, backend-ci] 
