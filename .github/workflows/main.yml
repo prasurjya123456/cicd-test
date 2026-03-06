@@ -1,116 +1,54 @@
-name: Full_Stack_Pipeline
+name: Docker_Cloud_Pipeline
 
 on:
   push:
     branches: ["main"]
 
 jobs:
-  build-frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: 'npm'
-          cache-dependency-path: './AS-03-Frontend/package-lock.json'
-
-      - name: Install and Build Frontend
-        working-directory: ./AS-03-Frontend
-        run: |
-          npm ci
-          npm run build
-
-      - name: Upload Frontend Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: ./AS-03-Frontend/dist
-
-  build-backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-          cache: 'pip'
-
-      - name: Install Python Dependencies
-        working-directory: ./AS-03-Backend
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      - name: Upload Backend Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-code
-          path: ./AS-03-Backend
-
   deploy:
-    needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
     steps:
-      - name: Download Frontend Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: ./deploy/frontend/dist
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Download Backend Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-code
-          path: ./deploy/backend
-
-      - name: Copy Built Artifacts to EC2
+      - name: Copy Repository to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "./deploy"
+          source: "."
           target: "~/app"
 
-      - name: SSH and Restart Services
+      - name: SSH and Start Docker Compose
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 20m
           script: |
-            set -ex  # The 'x' enables bash debugging to print every command
-            cd ~/app/deploy
-
-            # 1. Properly load NVM
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            node -v
-
-            # 2. Install PM2 and serve (removed --silent to see errors)
-            npm install -g pm2 serve
-
-            # --- Backend Deployment ---
-            cd backend
-            python3 -m venv venv || true
-            source venv/bin/activate
-            pip install -r requirements.txt --no-cache-dir
+            set -ex
+            cd ~/app
             
-            # Safer PM2 start/restart logic
-            pm2 describe as03-backend > /dev/null && pm2 restart as03-backend || pm2 start "venv/bin/python -m uvicorn app:main:app --host 0.0.0.0 --port 8000" --name "as03-backend"
+            # Create the .env file dynamically to inject your AWS RDS credentials
+            cat <<EOF > .env
+            RDS_ENDPOINT=${{ secrets.RDS_ENDPOINT }}
+            RDS_USER=${{ secrets.RDS_USER }}
+            RDS_PASSWORD=${{ secrets.RDS_PASSWORD }}
+            EOF
             
-            cd ..
-
-            # --- Frontend Deployment ---
-            cd frontend
+            # Install Docker & Docker Compose on the server if they are missing
+            if ! command -v docker-compose &> /dev/null; then
+              sudo apt-get update
+              sudo apt-get install -y docker.io docker-compose-v2
+            fi
             
-            pm2 describe as03-frontend > /dev/null && pm2 restart as03-frontend || pm2 start "serve -s dist -l 3000" --name "as03-frontend"
-
-            pm2 save
-            echo "Deployment successful!"
+            # Spin down old containers, rebuild the images with new code, and start them up
+            sudo docker compose down
+            sudo docker compose --env-file .env up --build -d
+            
+            # Clean up old unused images to save disk space on your EC2 instance
+            sudo docker image prune -f
+            
+            echo "Docker Deployment successful!"
