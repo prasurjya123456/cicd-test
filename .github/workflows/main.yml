@@ -1,43 +1,48 @@
-name: Full_Stack_Pipeline
+name: Full_Stack_Docker_CI_CD
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  frontend-check:
+  build-and-push:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install Frontend
-        working-directory: ./AS-03-Frontend
-        run: npm install
+    permissions:
+      contents: read
+      packages: write
 
-  backend-check:
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      - name: Install Python Dependencies
-        working-directory: ./AS-03-Backend
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-  deploy:
-    needs: [frontend-check, backend-check]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./AS-03-Backend
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/as-03-backend:latest
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./AS-03-Frontend
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/as-03-frontend:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -45,30 +50,15 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Navigate to app directory
-            cd ~/cicd-test || git clone https://github.com/prasurjya123456/cicd-test.git ~/cicd-test
             cd ~/cicd-test
             git pull origin main
-
-            # --- Backend Setup ---
-            cd AS-03-Backend
-            python3 -m venv venv || true
-            source venv/bin/activate
-            pip install -r requirements.txt --no-cache-dir
             
-            # Kill existing process on port 8000 and restart
-            fuser -k 8000/tcp || true
-            nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
-
-            cd ..
-
-            # --- Frontend Setup ---
-            cd AS-03-Frontend
-            npm install --quiet
-            npm run build
+            # Login to GHCR on the EC2 instance
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Kill existing process on port 3000 and restart
-            fuser -k 3000/tcp || true
-            nohup npm run preview -- --host 0.0.0.0 --port 3000 > frontend.log 2>&1 &
-
-            echo "Deployment successful!"
+            # Pull new images and restart services
+            docker compose pull
+            docker compose up -d --remove-orphans
+            
+            # Cleanup old unused images to save space
+            docker image prune -f
