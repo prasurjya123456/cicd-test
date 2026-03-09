@@ -1,43 +1,51 @@
-name: CI Pipeline
+name: Project CI Pipeline
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  # Job 1: Build the Backend
-  backend-build:
+  # Job 1: Build & Package the Backend (FastAPI)
+  backend-ci:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./AS-03-Backend # Tells CI to look here
+        working-directory: ./AS-03-Backend
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      - name: Build Backend Image
-        run: docker build -t backend:latest .
 
-  # Job 2: Build the Frontend
-  frontend-build:
+      - name: Build Backend Docker Image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/as-03-backend:latest .
+
+  # Job 2: Build & Package the Frontend (React)
+  frontend-ci:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./AS-03-Frontend # Tells CI to look here
+        working-directory: ./AS-03-Frontend
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Node
+
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install & Build
+
+      - name: Install & Build React
         run: |
           npm install
           npm run build
-      - name: Build Frontend Image
-        run: docker build -t frontend:latest .
+
+      - name: Build Frontend Docker Image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/as-03-frontend:latest .
